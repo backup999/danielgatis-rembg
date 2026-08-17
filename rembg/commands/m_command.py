@@ -17,7 +17,9 @@ def _model_for_file(fname: str) -> str | None:
     for session_class in sessions_class:
         try:
             names.append(session_class.name())
-        except Exception:
+        except Exception:  # nosec B112 - a session that cannot report its own
+            # name just cannot claim a file; skipping it leaves the file
+            # unrecognised, which is the safe outcome here.
             continue
 
     # SAM ships several files, all sharing a `sam_` prefix.
