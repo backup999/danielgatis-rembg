@@ -21,6 +21,52 @@ from ..sessions import sessions_names
 from ..sessions.base import BaseSession
 
 
+def _unwrap_ipv6(
+    ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
+) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]:
+    """Return the IPv4 address embedded in an IPv6 transition address.
+
+    6to4 (`2002::/16`), NAT64 (`64:ff9b::/96`), Teredo and IPv4-mapped
+    addresses all carry an IPv4 address inside them. Whether the wrapper
+    itself is classified as private depends on the interpreter: on
+    Python 3.11.9, `2002:c0a8:0101::` reports `is_private=False` even though
+    it embeds 192.168.1.1, so checking only the outer address lets a request
+    through to an internal host. Unwrap first, then classify.
+    """
+    if not isinstance(ip, ipaddress.IPv6Address):
+        return ip
+
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip.teredo is not None:
+        # (server, client); the client is the address traffic reaches.
+        return ip.teredo[1]
+    if ip in ipaddress.ip_network("64:ff9b::/96"):
+        return ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
+
+    return ip
+
+
+def _is_blocked_ip(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
+    def blocked(addr) -> bool:
+        return (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_reserved
+            or addr.is_multicast
+            or addr.is_unspecified
+        )
+
+    # Both the wrapper and what it embeds have to be public. Note that some
+    # interpreters already classify whole transition ranges (6to4, NAT64) as
+    # private, so those are refused outright rather than by their payload --
+    # acceptable, as 6to4 is deprecated (RFC 7526) and NAT64 is operator-local.
+    return blocked(ip) or blocked(_unwrap_ipv6(ip))
+
+
 @click.command(  # type: ignore
     name="s",
     help="for a http server",
@@ -252,16 +298,6 @@ def s_command(port: int, host: str, log_level: str, threads: int, no_ui: bool) -
             from anyio.lowlevel import RunVar
 
             RunVar("_default_thread_limiter").set(CapacityLimiter(threads))
-
-    def _is_blocked_ip(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        )
 
     def _resolve_public_ips(host: str) -> list[str]:
         """Resolve a hostname to IPs, rejecting the request if any resolved
