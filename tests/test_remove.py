@@ -10,11 +10,12 @@ here = Path(__file__).parent.resolve()
 failures_dir = here / "failures"
 failures_dir.mkdir(exist_ok=True)
 
+
 def test_remove():
     kwargs = {
         "sam": {
-            "anime-girl-1" : {
-                "sam_prompt" :[{"type": "point", "data": [400, 165], "label": 1}],
+            "anime-girl-1": {
+                "sam_prompt": [{"type": "point", "data": [400, 165], "label": 1}],
             }
         }
     }
@@ -34,13 +35,17 @@ def test_remove():
         "birefnet-dis",
         "birefnet-hrsod",
         "birefnet-cod",
-        "birefnet-massive"
+        "birefnet-massive",
     ]:
         for picture in ["anime-girl-1"]:
             image_path = Path(here / "fixtures" / f"{picture}.jpg")
             image = image_path.read_bytes()
 
-            actual = remove(image, session=new_session(model), **kwargs.get(model, {}).get(picture, {}))
+            actual = remove(
+                image,
+                session=new_session(model),
+                **kwargs.get(model, {}).get(picture, {}),
+            )
             actual_hash = hash_img(Image.open(BytesIO(actual)))
 
             expected_path = Path(here / "results" / f"{picture}.{model}.png")
