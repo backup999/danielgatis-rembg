@@ -1,4 +1,7 @@
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+# CUDA 13 to match onnxruntime-gpu >= 1.27, which links against
+# libcublasLt.so.13. Ubuntu 24.04 for Python 3.12; 22.04 ships 3.10, below the
+# >=3.11 this project requires.
+FROM nvidia/cuda:13.0.1-cudnn-devel-ubuntu24.04
 
 WORKDIR /rembg
 

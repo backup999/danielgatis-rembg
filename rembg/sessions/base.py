@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -37,6 +38,44 @@ class BaseSession:
             str(self.__class__.download_models(*args, **kwargs)),
             sess_options=sess_opts,
             providers=providers,
+        )
+
+        self._warn_on_provider_fallback(providers)
+
+    @staticmethod
+    def _accelerated_providers(providers: List[str]) -> List[str]:
+        return [p for p in providers if p != "CPUExecutionProvider"]
+
+    def _warn_on_provider_fallback(self, requested: List[str]) -> None:
+        """Warn when an accelerator was asked for but the session runs on CPU.
+
+        `get_available_providers()` lists a provider whenever its shim ships
+        with onnxruntime, even if the CUDA/cuDNN libraries it links against are
+        absent. Session creation then logs to stderr and quietly falls back to
+        CPU, so inference is 10-20x slower with no signal in Python. Compare
+        what was asked for against what the session actually got.
+        """
+        wanted = self._accelerated_providers(requested)
+        if not wanted:
+            return
+
+        try:
+            active = self.inner_session.get_providers()
+        except Exception:  # pragma: no cover - defensive
+            return
+
+        if self._accelerated_providers(active):
+            return
+
+        warnings.warn(
+            f"{', '.join(wanted)} was requested but the session is running on "
+            "CPU. onnxruntime could not load the provider, usually because the "
+            "matching CUDA/cuDNN runtime libraries are missing or are a "
+            "different major version than the onnxruntime-gpu build. Inference "
+            "will be slow. See the onnxruntime stderr output above for the "
+            "specific library that failed to load.",
+            RuntimeWarning,
+            stacklevel=3,
         )
 
     def normalize(
